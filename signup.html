@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main class="auth-shell">
+        <section class="auth-card">
+            <span class="auth-card__eyebrow">Class Blog</span>
+            <h1>Create your account</h1>
+            <p class="auth-card__sub">This is our blog app — sign up to start reading and writing.</p>
+
+            <div class="field">
+                <label for="email">Email</label>
+                <input id="email" type="email" placeholder="you@example.com">
+                <span class="field-error" id="emailError"></span>
+            </div>
+            <div class="field">
+                <label for="username">Username</label>
+                <input id="username" type="text" placeholder="Pick a username">
+                <span class="field-error" id="usernameError"></span>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" type="password" placeholder="At least 6 characters">
+                <span class="field-error" id="passwordError"></span>
+            </div>
+            <textarea name="" id="bio" placeholder="Tell us what you do"> </textarea>
+
+            <button id="signupbtn" class="btn-primary">Sign up</button>
+            <button id="signinwithgoogle">Sign in with Google</button>
+
+            <p class="auth-switch">Already have an account? <a href="./login.html">Log in</a></p>
+        </section>
+    </main>
+
+    <script type="module" src="script.js"></script>
+    <script type="module" src="signup.js"></script>
+</body>
+</html>
+
+

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Catalog — SkillBridge</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <div class="logo">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </div>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link is-active" href="catalog.html">
+          <span class="sidebar__icon">▤</span> Catalog
+        </a>
+        <a class="sidebar__link" href="dashboard.html">
+          <span class="sidebar__icon">◧</span> Dashboard
+        </a>
+        <a class="sidebar__link" href="cart.html">
+          <span class="sidebar__icon">⛁</span> Cart
+        </a>
+        <a class="sidebar__link" href="profile.html">
+          <span class="sidebar__icon">◐</span> Profile
+        </a>
+      </nav>
+      <div class="sidebar__footer">Signed in as Hikmat</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="text" placeholder="Search courses or instructors" />
+        <div class="topbar__actions">
+          <button class="topbar__icon-btn" aria-label="Cart">⛁</button>
+          <button class="topbar__icon-btn" aria-label="Profile">◐</button>
+        </div>
+      </header>
+
+      <main class="content">
+
+        <div class="hero">
+          <div>
+            <h1 class="hero__title">Skills that move you forward.</h1>
+            <p class="hero__subtitle">Tech, design, and creative courses built for where you are right now — some free, some worth the investment.</p>
+          </div>
+          <div class="hero__stat">
+            <div class="hero__stat-number">16</div>
+            <div class="hero__stat-label">courses available</div>
+          </div>
+        </div>
+
+        <div class="chip-row">
+          <button class="chip is-active">All</button>
+          <button class="chip">Free</button>
+          <button class="chip">Premium</button>
+          <button class="chip">Tech & Coding</button>
+          <button class="chip">Content Creation</button>
+          <button class="chip">Design</button>
+          <button class="chip">Career & Money</button>
+          <button class="chip">Soft Skills</button>
+        </div>
+
+        <div class="row" style="margin-bottom: 20px;">
+          <span class="muted" style="font-size: 13px;">16 courses</span>
+          <select class="select">
+            <option>Sort: Rating</option>
+            <option>Sort: Price (low–high)</option>
+            <option>Sort: Newest</option>
+          </select>
+        </div>
+
+        <!-- This grid will be generated with map() + filter() once Firebase is wired in. -->
+        <div class="course-grid" id="course-grid">
+
+          <a class="course-card" href="course-detail.html?id=c001">
+            <span class="course-card__category">Tech & Coding</span>
+            <div class="course-card__body">
+              <span class="course-card__title">Intro to Web Development</span>
+              <span class="course-card__instructor">Amaka O.</span>
+              <div class="course-card__meta">
+                <span class="course-card__rating">★ 4.6</span>
+                <span class="course-card__price is-free">Free</span>
+              </div>
+            </div>
+          </a>
+
+          <a class="course-card" href="course-detail.html?id=c005">
+            <span class="course-card__category">Content Creation</span>
+            <div class="course-card__body">
+              <span class="course-card__title">Video Editing with CapCut</span>
+              <span class="course-card__instructor">Hikmat K.</span>
+              <div class="course-card__meta">
+                <span class="course-card__rating">★ 4.9</span>
+                <span class="course-card__price">₦8,000</span>
+              </div>
+            </div>
+          </a>
+
+          <a class="course-card" href="course-detail.html?id=c011">
+            <span class="course-card__category">Career & Money</span>
+            <div class="course-card__body">
+              <span class="course-card__title">Scholarship Application Prep</span>
+              <span class="course-card__instructor">Tolu A.</span>
+              <div class="course-card__meta">
+                <span class="course-card__rating">★ 4.8</span>
+                <span class="course-card__price is-free">Free</span>
+              </div>
+            </div>
+          </a>
+
+          <a class="course-card" href="course-detail.html?id=c008">
+            <span class="course-card__category">Design</span>
+            <div class="course-card__body">
+              <span class="course-card__title">Canva for Creators</span>
+              <span class="course-card__instructor">Zainab I.</span>
+              <div class="course-card__meta">
+                <span class="course-card__rating">★ 4.7</span>
+                <span class="course-card__price">₦5,000</span>
+              </div>
+            </div>
+          </a>
+
+          <a class="course-card" href="course-detail.html?id=c004">
+            <span class="course-card__category">Tech & Coding</span>
+            <div class="course-card__body">
+              <span class="course-card__title">JavaScript Fundamentals</span>
+              <span class="course-card__instructor">Ngozi E.</span>
+              <div class="course-card__meta">
+                <span class="course-card__rating">★ 4.7</span>
+                <span class="course-card__price">₦9,000</span>
+              </div>
+            </div>
+          </a>
+
+          <a class="course-card" href="course-detail.html?id=c016">
+            <span class="course-card__category">Soft Skills</span>
+            <div class="course-card__body">
+              <span class="course-card__title">Acing Your IT Defense Presentation</span>
+              <span class="course-card__instructor">Chuka N.</span>
+              <div class="course-card__meta">
+                <span class="course-card__rating">★ 4.9</span>
+                <span class="course-card__price">₦5,500</span>
+              </div>
+            </div>
+          </a>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+</body>
+</html>
