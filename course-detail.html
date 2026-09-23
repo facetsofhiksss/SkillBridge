@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkillBridge — Course</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content" id="content">
+        <!-- Filled by script once the course is loaded. -->
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { courseDuration } from "./courses.js";
+    import {
+      initShell, currentUser, requireAuth, formatPrice, escapeHTML, courseThumbHTML,
+      isInCart, addToCart, removeFromCart, getEnrollment, enrollInCourse, setLessonComplete,
+      getReviews, saveReview, summarizeReviews, loadCourses, getCourseCached,
+      backLinkHTML, wireBackLink,
+    } from "./app.js";
+
+    initShell();
+
+    const content = document.getElementById("content");
+    const params = new URLSearchParams(location.search);
+    await loadCourses();
+    const course = getCourseCached(params.get("id"));
+
+    function formatDuration(totalMinutes) {
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (hours === 0) return `${minutes}m`;
+      return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+    }
+
+    if (!course) {
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <div class="center-empty">
+          <p>We couldn't find that course.</p>
+          <p style="margin-top: 12px;"><a class="btn btn--outline" href="catalog.html" style="padding: 8px 16px;">Back to catalog</a></p>
+        </div>`;
+      wireBackLink();
+    } else {
+      const duration = courseDuration(course);
+
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <p class="breadcrumb"><a href="catalog.html">Catalog</a> / <a href="catalog.html?filter=${encodeURIComponent(course.category)}">${escapeHTML(course.category)}</a> / ${escapeHTML(course.title)}</p>
+
+        <div class="detail-layout">
+          <div>
+            ${courseThumbHTML(course, "detail-thumb")}
+            <span class="badge">${escapeHTML(course.category)}</span>
+            <h1 class="page-title">${escapeHTML(course.title)}</h1>
+            <div class="detail-meta-row">
+              <span>By ${escapeHTML(course.instructor)}</span>
+              <span id="meta-rating">★ ${course.rating.toFixed(1)}</span>
+              <span>${course.students.toLocaleString("en-NG")} students</span>
+              <span>${escapeHTML(course.level)}</span>
+              <span>${formatDuration(duration)} total</span>
+            </div>
+
+            <p class="page-subtitle" style="font-size: 15px; color: var(--ink); margin-bottom: 28px;">${escapeHTML(course.description)}</p>
+
+            <div id="progress-area"></div>
+            <div class="section-label">${course.lessons.length} lessons · click one to open it</div>
+            <div class="lesson-list" id="lesson-list">
+              ${course.lessons.map((lesson, i) => {
+                const isPreview = i === 0; // first lesson is always previewable, even for guests
+                return `
+                <div class="lesson-item">
+                  <div class="lesson-row${isPreview ? "" : " is-locked"}" data-index="${i}">
+                    <button class="lesson-row__number" data-index="${i}" disabled>${i + 1}</button>
+                    <span class="lesson-row__title">${escapeHTML(lesson.title)}</span>
+                    ${isPreview
+                      ? `<span class="lesson-row__preview-badge">Free preview</span>`
+                      : `<span class="lesson-row__lock">🔒</span>`}
+                    <span class="lesson-row__minutes">${lesson.minutes} min</span>
+                  </div>
+                  <div class="lesson-panel" id="lesson-panel-${i}">
+                    ${lesson.videoUrl ? `<iframe src="${escapeHTML(lesson.videoUrl)}" allowfullscreen loading="lazy"></iframe>` : ""}
+                    <p>${escapeHTML(lesson.content)}</p>
+                  </div>
+                  ${isPreview ? "" : `
+                  <div class="lesson-lock-notice" id="lesson-lock-${i}">
+                    <span>🔒 This lesson is locked — enroll to unlock it.</span>
+                    <button type="button" class="lesson-lock-notice__cta">${course.price === 0 ? "Enroll for free" : "Buy this course"}</button>
+                  </div>`}
+                </div>`;
+              }).join("")}
+            </div>
+
+            <div class="section-label" style="margin-top: 32px;">Ratings & reviews</div>
+            <p class="muted" id="reviews-summary" style="font-size: 14px; margin-bottom: 16px;">Loading reviews…</p>
+            <div id="review-form-area" style="margin-bottom: 24px;"></div>
+            <div class="stack" id="reviews-list" style="gap: 12px;"></div>
+          </div>
+
+          <div class="detail-card">
+            <div class="detail-card__price">${formatPrice(course.price)}</div>
+            <div class="stack" id="cta-area">
+              <button class="btn btn--gold btn--block" id="cta-btn">Loading…</button>
+            </div>
+            <p class="muted" style="font-size: 13px; margin-top: 16px;">
+              ${course.price === 0 ? "Free forever. No card required." : "One-time payment. Lifetime access."}
+            </p>
+          </div>
+        </div>`;
+
+      // A lesson's row opens its content panel — except the number button, which is its own
+      // control for marking a lesson done (handled separately, once enrollment is known).
+      // A locked row opens a short explanation instead of the content, with a button that
+      // jumps straight to the buy/enroll button, so it's clear *why* nothing played and
+      // what to do about it, rather than the click silently doing nothing.
+      document.getElementById("lesson-list").addEventListener("click", (e) => {
+        if (e.target.closest(".lesson-row__number")) return;
+
+        if (e.target.closest(".lesson-lock-notice__cta")) {
+          const ctaBtn = document.getElementById("cta-btn");
+          ctaBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+          ctaBtn.classList.add("is-flashing");
+          setTimeout(() => ctaBtn.classList.remove("is-flashing"), 1200);
+          return;
+        }
+
+        // The lock message reads like a dismissible note, so clicking anywhere on it
+        // (besides its button, handled above) closes it — not just re-clicking the row.
+        const openNotice = e.target.closest(".lesson-lock-notice");
+        if (openNotice) {
+          openNotice.classList.remove("is-open");
+          return;
+        }
+
+        const row = e.target.closest(".lesson-row");
+        if (!row) return;
+        const i = row.dataset.index;
+
+        if (row.classList.contains("is-locked")) {
+          document.getElementById(`lesson-lock-${i}`)?.classList.toggle("is-open");
+          return;
+        }
+        document.getElementById(`lesson-panel-${i}`).classList.toggle("is-open");
+      });
+
+      wireBackLink();
+      setUpCta();
+      loadReviews();
+    }
+
+    async function setUpCta() {
+      const ctaBtn = document.getElementById("cta-btn");
+      const user = await currentUser();
+
+      // Guests see the real action, but clicking sends them to log in first.
+      if (!user) {
+        ctaBtn.textContent = course.price === 0 ? "Enroll for free" : "Add to cart";
+        ctaBtn.disabled = false;
+        ctaBtn.addEventListener("click", requireAuth);
+        return;
+      }
+
+      const timeout = (promise) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Database request timed out. Check your Firebase Realtime Database URL and rules.")), 6000)),
+      ]);
+
+      try {
+        const [enrollment, inCart] = await Promise.all([
+          timeout(getEnrollment(user.uid, course.id)),
+          timeout(isInCart(user.uid, course.id)),
+        ]);
+        renderCta(user, !!enrollment, inCart);
+        if (enrollment) enableLessonTracking(user, enrollment);
+      } catch (err) {
+        console.error("Could not load enrollment/cart status:", err);
+        ctaBtn.textContent = "Couldn't connect — retry";
+        ctaBtn.className = "btn btn--outline btn--block";
+        ctaBtn.disabled = false;
+        ctaBtn.onclick = () => {
+          ctaBtn.textContent = "Loading…";
+          ctaBtn.disabled = true;
+          setUpCta();
+        };
+      }
+    }
+
+    function renderCta(user, enrolled, inCart) {
+      const ctaBtn = document.getElementById("cta-btn");
+
+      if (enrolled) {
+        ctaBtn.textContent = "Enrolled ✓";
+        ctaBtn.className = "btn btn--outline btn--block";
+        ctaBtn.disabled = true;
+        return;
+      }
+
+      if (course.price === 0) {
+        ctaBtn.textContent = "Enroll for free";
+        ctaBtn.className = "btn btn--gold btn--block";
+        ctaBtn.disabled = false;
+        ctaBtn.onclick = async () => {
+          ctaBtn.disabled = true;
+          ctaBtn.textContent = "Enrolling…";
+          try {
+            await enrollInCourse(user.uid, course.id);
+            renderCta(user, true, false);
+            enableLessonTracking(user, { completedLessons: {} });
+          } catch (err) {
+            ctaBtn.disabled = false;
+            ctaBtn.textContent = "Enroll for free";
+            alert("Something went wrong enrolling you. Please try again.");
+            console.error(err);
+          }
+        };
+        return;
+      }
+
+      // Paid course, not yet enrolled.
+      if (inCart) {
+        ctaBtn.textContent = "Remove from cart";
+        ctaBtn.className = "btn btn--outline btn--block";
+        ctaBtn.disabled = false;
+        ctaBtn.onclick = async () => {
+          ctaBtn.disabled = true;
+          await removeFromCart(user.uid, course.id);
+          renderCta(user, false, false);
+        };
+      } else {
+        ctaBtn.textContent = "Add to cart";
+        ctaBtn.className = "btn btn--gold btn--block";
+        ctaBtn.disabled = false;
+        ctaBtn.onclick = async () => {
+          ctaBtn.disabled = true;
+          ctaBtn.textContent = "Adding…";
+          try {
+            await addToCart(user.uid, course.id);
+            renderCta(user, false, true);
+          } catch (err) {
+            ctaBtn.disabled = false;
+            ctaBtn.textContent = "Add to cart";
+            alert("Something went wrong adding this to your cart. Please try again.");
+            console.error(err);
+          }
+        };
+      }
+    }
+
+    // Lets an enrolled user tick lessons off. `enrollment.completedLessons` is the raw
+    // { "0": true, ... } map from the database; we keep our own copy here and patch it
+    // in place as the user clicks, so the UI never has to re-fetch after every toggle.
+    function enableLessonTracking(user, enrollment) {
+      const completed = { ...(enrollment.completedLessons || {}) };
+      updateProgressUI(completed);
+
+      // Enrolled? Every lesson is unlocked, not just the free preview.
+      document.querySelectorAll(".lesson-row.is-locked").forEach((row) => {
+        row.classList.remove("is-locked");
+        row.querySelector(".lesson-row__lock")?.remove();
+      });
+      document.querySelectorAll(".lesson-row__preview-badge").forEach((el) => el.remove());
+      document.querySelectorAll(".lesson-lock-notice").forEach((el) => el.remove());
+
+      document.querySelectorAll(".lesson-row__number").forEach((btn) => {
+        const i = btn.dataset.index;
+        btn.disabled = false;
+        btn.classList.add("is-trackable");
+        btn.classList.toggle("is-done", !!completed[i]);
+        btn.textContent = completed[i] ? "✓" : Number(i) + 1;
+        btn.title = completed[i] ? "Mark as not done" : "Mark as done";
+
+        btn.onclick = async () => {
+          const nowDone = !completed[i];
+          btn.disabled = true;
+          try {
+            await setLessonComplete(user.uid, course.id, i, nowDone);
+            if (nowDone) completed[i] = true; else delete completed[i];
+            btn.classList.toggle("is-done", !!completed[i]);
+            btn.textContent = completed[i] ? "✓" : Number(i) + 1;
+            updateProgressUI(completed);
+          } catch (err) {
+            console.error(err);
+          } finally {
+            btn.disabled = false;
+          }
+        };
+      });
+    }
+
+    // Public, so this runs regardless of whether anyone's logged in. It figures out
+    // enrollment itself (independent of setUpCta) so it isn't affected by that call's
+    // own success or failure.
+    async function loadReviews() {
+      const reviews = await getReviews(course.id).catch(() => ({}));
+      renderReviewSummary(reviews);
+      renderReviewList(reviews);
+
+      const user = await currentUser();
+      let enrolled = false;
+      if (user) {
+        try { enrolled = !!(await getEnrollment(user.uid, course.id)); }
+        catch (err) { console.error(err); }
+      }
+      renderReviewForm(user, enrolled, reviews);
+    }
+
+    function renderReviewSummary(reviews) {
+      const summary = summarizeReviews(reviews, course.rating);
+      const stars = `★ ${summary.average.toFixed(1)}`;
+
+      document.getElementById("reviews-summary").textContent = summary.isReal
+        ? `${stars} · ${summary.count} review${summary.count === 1 ? "" : "s"}`
+        : `${stars} · No reviews yet — be the first`;
+
+      const metaRating = document.getElementById("meta-rating");
+      if (metaRating) metaRating.textContent = stars;
+    }
+
+    function renderReviewList(reviews) {
+      const entries = Object.values(reviews).sort((a, b) => b.createdAt - a.createdAt);
+      const listEl = document.getElementById("reviews-list");
+      listEl.innerHTML = entries.length === 0
+        ? `<p class="muted" style="font-size: 14px;">No reviews yet.</p>`
+        : entries.map((r) => `
+            <div class="review-row">
+              <div class="row" style="margin-bottom: 2px;">
+                <span style="font-weight: 500;">${escapeHTML(r.authorName || "Anonymous")}</span>
+                <span class="muted" style="font-size: 12px;">${new Date(r.createdAt).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" })}</span>
+              </div>
+              <div class="review-row__stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</div>
+              ${r.comment ? `<p style="font-size: 14px;">${escapeHTML(r.comment)}</p>` : ""}
+            </div>`).join("");
+    }
+
+    function renderReviewForm(user, enrolled, reviews) {
+      const area = document.getElementById("review-form-area");
+
+      if (!user) {
+        const next = encodeURIComponent(location.pathname.split("/").pop() + location.search);
+        area.innerHTML = `<p class="muted" style="font-size: 13px;"><a href="login.html?next=${next}">Log in</a> to leave a review.</p>`;
+        return;
+      }
+      if (!enrolled) {
+        area.innerHTML = `<p class="muted" style="font-size: 13px;">Enroll in this course to leave a review.</p>`;
+        return;
+      }
+
+      const existing = reviews[user.uid];
+      area.innerHTML = `
+        <form id="review-form" class="stack" style="max-width: 480px; gap: 10px;">
+          <div class="section-label" style="margin-bottom: 0;">${existing ? "Edit your review" : "Leave a review"}</div>
+          <div class="star-picker" id="star-picker">
+            ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="star-picker__star" data-value="${n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}
+          </div>
+          <textarea class="input" id="review-comment" rows="3" placeholder="What did you think of this course? (optional)">${escapeHTML(existing?.comment || "")}</textarea>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="btn btn--gold" type="submit" style="padding: 9px 20px;">${existing ? "Update review" : "Submit review"}</button>
+            <span class="muted" id="review-save-note" style="font-size: 13px;"></span>
+          </div>
+        </form>`;
+
+      let selectedRating = existing?.rating || 0;
+      const stars = area.querySelectorAll(".star-picker__star");
+      const paintStars = () => stars.forEach((s) => s.classList.toggle("is-filled", Number(s.dataset.value) <= selectedRating));
+      paintStars();
+      stars.forEach((s) => s.addEventListener("click", () => {
+        selectedRating = Number(s.dataset.value);
+        paintStars();
+      }));
+
+      document.getElementById("review-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const note = document.getElementById("review-save-note");
+        if (!selectedRating) {
+          note.textContent = "Pick a star rating first.";
+          return;
+        }
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        note.textContent = "Saving…";
+        try {
+          await saveReview(user.uid, course.id, {
+            rating: selectedRating,
+            comment: document.getElementById("review-comment").value.trim(),
+            authorName: user.displayName || user.email.split("@")[0],
+          });
+          loadReviews(); // refresh the summary and list to include the new/edited review
+        } catch (err) {
+          note.textContent = "Couldn't save — try again.";
+          submitBtn.disabled = false;
+          console.error(err);
+        }
+      });
+    }
+
+    function updateProgressUI(completed) {
+      const total = course.lessons.length;
+      const done = Object.values(completed).filter(Boolean).length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      document.getElementById("progress-area").innerHTML = `
+        <div class="progress-track" style="margin-bottom: 8px;">
+          <div class="progress-fill" style="width: ${pct}%"></div>
+        </div>
+        <p class="muted" style="font-size: 13px; margin-bottom: 8px;">
+          ${done} of ${total} lessons complete${pct === 100 ? " — course complete! 🎉" : ""}
+        </p>
+        <p class="muted" style="font-size: 12px; margin-bottom: 16px;">Click a lesson's circle to mark it done.</p>`;
+    }
+  </script>
+
+</body>
+</html>

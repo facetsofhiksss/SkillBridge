@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Catalog — SkillBridge</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" id="search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content">
+
+        <button type="button" class="back-link" id="back-link-btn">← Back</button>
+
+        <div class="hero">
+          <div>
+            <h1 class="hero__title">Skills that move you forward.</h1>
+            <p class="hero__subtitle">Tech, design, and creative courses built for where you are right now — some free, some worth the investment.</p>
+          </div>
+          <div class="hero__stat">
+            <div class="hero__stat-number" id="total-count">16</div>
+            <div class="hero__stat-label">courses available</div>
+          </div>
+        </div>
+
+        <div class="chip-row" id="chips">
+          <button class="chip is-active" data-filter="all">All</button>
+          <button class="chip" data-filter="free">Free</button>
+          <button class="chip" data-filter="premium">Premium</button>
+          <!-- category chips are added by script from CATEGORIES -->
+        </div>
+
+        <div class="row" style="margin-bottom: 20px;">
+          <span class="muted" style="font-size: 13px;" id="result-count">16 courses</span>
+          <select class="select" id="sort">
+            <option value="rating">Sort: Rating</option>
+            <option value="price-asc">Sort: Price (low–high)</option>
+            <option value="price-desc">Sort: Price (high–low)</option>
+            <option value="newest">Sort: Newest</option>
+          </select>
+        </div>
+
+        <div class="course-grid" id="course-grid"></div>
+
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CATEGORIES } from "./courses.js";
+    import { initShell, courseCardHTML, loadCourses, wireBackLink } from "./app.js";
+
+    initShell();
+    wireBackLink();
+    const COURSES = await loadCourses();
+
+    const grid = document.getElementById("course-grid");
+    const chips = document.getElementById("chips");
+    const search = document.getElementById("search");
+    const sortSelect = document.getElementById("sort");
+    const resultCount = document.getElementById("result-count");
+    document.getElementById("total-count").textContent = COURSES.length;
+
+    // Build one chip per category so the list stays in sync with courses.js.
+    CATEGORIES.forEach((category) => {
+      const chip = document.createElement("button");
+      chip.className = "chip";
+      chip.dataset.filter = category;
+      chip.textContent = category;
+      chips.appendChild(chip);
+    });
+
+    // Allow deep links such as catalog.html?filter=Design or ?q=canva
+    const params = new URLSearchParams(location.search);
+    let activeFilter = params.get("filter") || "all";
+    search.value = params.get("q") || "";
+
+    const SORTS = {
+      rating: (a, b) => b.rating - a.rating,
+      "price-asc": (a, b) => a.price - b.price,
+      "price-desc": (a, b) => b.price - a.price,
+      newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
+    };
+
+    function render() {
+      const query = search.value.trim().toLowerCase();
+
+      const visible = COURSES
+        .filter((c) => {
+          if (activeFilter === "free") return c.price === 0;
+          if (activeFilter === "premium") return c.price > 0;
+          if (activeFilter === "all") return true;
+          return c.category === activeFilter;
+        })
+        .filter((c) =>
+          !query ||
+          c.title.toLowerCase().includes(query) ||
+          c.instructor.toLowerCase().includes(query)
+        )
+        .sort(SORTS[sortSelect.value]);
+
+      resultCount.textContent = `${visible.length} ${visible.length === 1 ? "course" : "courses"}`;
+
+      grid.innerHTML = visible.length
+        ? visible.map(courseCardHTML).join("")
+        : `<div class="center-empty" style="grid-column: 1 / -1;">No courses match that. Try a different search or filter.</div>`;
+
+      chips.querySelectorAll(".chip").forEach((chip) => {
+        chip.classList.toggle("is-active", chip.dataset.filter === activeFilter);
+      });
+    }
+
+    chips.addEventListener("click", (e) => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      activeFilter = chip.dataset.filter;
+      render();
+    });
+    search.addEventListener("input", render);
+    sortSelect.addEventListener("change", render);
+
+    render();
+  </script>
+
+</body>
+</html>

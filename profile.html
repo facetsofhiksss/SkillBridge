@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profile — SkillBridge</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content" id="content">
+        <h1 class="page-title">Profile</h1>
+        <p class="page-subtitle">Loading…</p>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      initShell, requireAuth, escapeHTML, formatPrice,
+      getProfile, saveProfile, getEnrollments, getPurchases, updateProfileName, updateProfilePhoto,
+      resendVerificationEmail, refreshEmailVerified, changePassword, deleteAccount,
+      loadCourses, getCourseCached, backLinkHTML, wireBackLink,
+    } from "./app.js";
+    import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "./cloudinary-config.js";
+
+    initShell();
+    const content = document.getElementById("content");
+    const user = await requireAuth();
+    await loadCourses();
+
+    const [profile, enrollments, purchases] = await Promise.all([
+      getProfile(user.uid),
+      getEnrollments(user.uid),
+      getPurchases(user.uid),
+    ]);
+
+    const name = profile?.name || user.displayName || user.email.split("@")[0];
+    const bio = profile?.bio || "";
+    // Firebase Auth's own creation timestamp, not the database profile record's createdAt —
+    // that field is only ever written once at signup, so an account whose database write
+    // failed back then (or predates that code) would be stuck showing "—" forever with no
+    // way to fix itself. This is set by Firebase for every account, no exceptions.
+    const memberSince = new Date(user.metadata.creationTime)
+      .toLocaleDateString("en-NG", { year: "numeric", month: "long", day: "numeric" });
+    const initial = name.trim().charAt(0).toUpperCase() || "?";
+
+    const purchaseList = Object.entries(purchases).sort(([, a], [, b]) => b.paidAt - a.paidAt);
+
+    content.innerHTML = `
+      ${backLinkHTML()}
+      <h1 class="page-title">Profile</h1>
+      <p class="page-subtitle">Manage your details and see what you've bought.</p>
+
+      <div class="detail-layout">
+        <div>
+          <div class="section-label">Edit profile</div>
+          <form id="profile-form" class="stack" style="max-width: 440px; margin-bottom: 36px;">
+            <div>
+              <label class="auth-card__field-label" for="name">Full name</label>
+              <input class="input" id="name" type="text" value="${escapeHTML(name)}" required />
+            </div>
+            <div>
+              <label class="auth-card__field-label" for="bio">Bio</label>
+              <textarea class="input" id="bio" rows="4" placeholder="Tell other learners a bit about yourself">${escapeHTML(bio)}</textarea>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <button class="btn btn--gold" type="submit" style="padding: 11px 22px;">Save changes</button>
+              <span class="muted" id="save-note" style="font-size: 13px;"></span>
+            </div>
+          </form>
+
+          <div class="section-label">Purchase history</div>
+          ${purchaseList.length === 0 ? `
+            <p class="muted" style="font-size: 14px;">No purchases yet.</p>
+          ` : `
+            <div class="lesson-list">
+              ${purchaseList.map(([reference, p]) => {
+                const titles = (p.courseIds || []).map((id) => getCourseCached(id)?.title).filter(Boolean).join(", ") || "Courses no longer listed";
+                const date = new Date(p.paidAt).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
+                return `
+                  <div class="purchase-row">
+                    <div class="purchase-row__body">
+                      <span class="purchase-row__courses">${escapeHTML(titles)}</span>
+                      <span class="purchase-row__date">${date} · Ref: ${escapeHTML(reference)}</span>
+                    </div>
+                    <span class="purchase-row__amount">${formatPrice(p.amount)}</span>
+                  </div>`;
+              }).join("")}
+            </div>`}
+
+          <div class="section-label" style="margin-top: 32px;">Account settings</div>
+
+          <div class="stack" style="max-width: 420px; gap: 10px;">
+            <p class="muted" id="verify-status" style="font-size: 14px; margin: 0;">Checking email verification…</p>
+
+            <div class="row">
+              <span style="font-size: 14px;">Password</span>
+              <button class="btn btn--outline" id="toggle-password-btn" type="button" style="padding: 5px 14px; font-size: 13px;">Change</button>
+            </div>
+            <div id="password-form-area"></div>
+          </div>
+
+          <p style="margin-top: 20px;">
+            <button type="button" id="toggle-delete-btn" style="background: none; border: none; color: var(--muted); text-decoration: underline; padding: 0; font-size: 13px; cursor: pointer;">Delete my account</button>
+          </p>
+          <div id="delete-form-area" style="max-width: 400px;"></div>
+        </div>
+
+        <div class="detail-card">
+          <div class="avatar-wrap">
+            <div class="avatar-circle" id="avatar-display">${profile?.photoURL ? `<img src="${escapeHTML(profile.photoURL)}" alt="" />` : escapeHTML(initial)}</div>
+            <label class="avatar-upload-btn" for="avatar-input">Change photo</label>
+            <button type="button" id="remove-photo-btn" class="avatar-upload-btn" style="background: none; border: none; margin-left: 8px; ${profile?.photoURL ? "" : "display: none;"}">Remove</button>
+            <input type="file" id="avatar-input" accept="image/*" style="display: none;" />
+            <div class="muted" id="avatar-note" style="font-size: 12px; min-height: 16px;"></div>
+          </div>
+          <div style="font-weight: 600; margin-bottom: 2px;">${escapeHTML(name)}</div>
+          <div class="muted" style="font-size: 13px; margin-bottom: 20px;">${escapeHTML(user.email)}</div>
+
+          <div class="cart-summary__row"><span>Member since</span><span>${memberSince}</span></div>
+          <div class="cart-summary__row"><span>Courses enrolled</span><span>${Object.keys(enrollments).length}</span></div>
+          <div class="cart-summary__row" style="margin-bottom: 20px;"><span>Purchases made</span><span>${purchaseList.length}</span></div>
+
+          <a class="btn btn--outline btn--block" href="dashboard.html">Go to dashboard</a>
+        </div>
+      </div>`;
+    wireBackLink();
+
+    document.getElementById("profile-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const newName = document.getElementById("name").value.trim();
+      const newBio = document.getElementById("bio").value.trim();
+      const saveNote = document.getElementById("save-note");
+      const saveBtn = e.target.querySelector('button[type="submit"]');
+
+      if (!newName) return;
+
+      saveBtn.disabled = true;
+      saveNote.textContent = "Saving…";
+      try {
+        await saveProfile(user.uid, { name: newName, bio: newBio });
+        await updateProfileName(newName);
+        saveNote.textContent = "Saved ✓";
+        // Reflect the new name in the sidebar / topbar right away.
+        initShell();
+      } catch (err) {
+        saveNote.textContent = "Couldn't save — try again.";
+        console.error(err);
+      } finally {
+        saveBtn.disabled = false;
+        setTimeout(() => { saveNote.textContent = ""; }, 2500);
+      }
+    });
+
+    // ---- Email verification status ----
+    function renderVerifyStatus() {
+      const el = document.getElementById("verify-status");
+      if (user.emailVerified) {
+        el.textContent = "Email verified ✓";
+        return;
+      }
+      el.innerHTML = `Email not verified. <button type="button" id="resend-verify-btn" style="background: none; border: none; color: var(--gold-deep); text-decoration: underline; font-size: 14px; padding: 0;">Resend verification email</button>`;
+      document.getElementById("resend-verify-btn").addEventListener("click", async (e) => {
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = "Sending…";
+        try {
+          await resendVerificationEmail();
+          btn.textContent = "Sent — check your inbox";
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = "Resend verification email";
+          console.error(err);
+        }
+      });
+    }
+    renderVerifyStatus();
+    // If they verified in another tab, `user.emailVerified` here is stale — this re-checks.
+    refreshEmailVerified().then((verified) => { if (verified) renderVerifyStatus(); });
+
+    // ---- Change password ----
+    // Collapsed by default — clicking "Change" builds the small form on demand instead of
+    // it always taking up space on the page, and clicking again collapses it back.
+    document.getElementById("toggle-password-btn").addEventListener("click", (e) => {
+      const area = document.getElementById("password-form-area");
+      if (area.innerHTML) {
+        area.innerHTML = "";
+        e.target.textContent = "Change";
+        return;
+      }
+      area.innerHTML = `
+        <form id="password-form" class="stack" style="gap: 10px; padding-top: 2px;">
+          <div>
+            <label class="auth-card__field-label" for="current-password">Current password</label>
+            <input class="input" id="current-password" type="password" autocomplete="current-password" required />
+          </div>
+          <div>
+            <label class="auth-card__field-label" for="new-password">New password</label>
+            <input class="input" id="new-password" type="password" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required />
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="btn btn--outline" type="submit" style="padding: 7px 16px; font-size: 13px;">Update password</button>
+            <span class="muted" id="password-note" style="font-size: 13px;"></span>
+          </div>
+        </form>`;
+      e.target.textContent = "Cancel";
+
+      document.getElementById("password-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const note = document.getElementById("password-note");
+        const btn = ev.target.querySelector('button[type="submit"]');
+        const currentPassword = document.getElementById("current-password").value;
+        const newPassword = document.getElementById("new-password").value;
+
+        btn.disabled = true;
+        note.textContent = "Updating…";
+        try {
+          await changePassword(currentPassword, newPassword);
+          note.textContent = "Password updated ✓";
+          ev.target.reset();
+        } catch (err) {
+          note.textContent = err.code === "auth/invalid-credential" || err.code === "auth/wrong-password"
+            ? "That current password isn't right."
+            : "Couldn't update your password — try again.";
+          console.error(err);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    // ---- Delete account ----
+    // Same collapsed-by-default pattern, and deliberately plain — no red "danger zone" box —
+    // the password re-entry plus the browser confirm() dialog are the real safeguards here.
+    document.getElementById("toggle-delete-btn").addEventListener("click", (e) => {
+      const area = document.getElementById("delete-form-area");
+      if (area.innerHTML) {
+        area.innerHTML = "";
+        e.target.textContent = "Delete my account";
+        return;
+      }
+      area.innerHTML = `
+        <form id="delete-form" class="stack" style="gap: 10px; padding-top: 6px;">
+          <p class="muted" style="font-size: 13px;">This permanently removes your cart, enrollments, purchase history and profile. It can't be undone.</p>
+          <div>
+            <label class="auth-card__field-label" for="delete-password">Confirm your password to continue</label>
+            <input class="input" id="delete-password" type="password" autocomplete="current-password" required />
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="btn" type="submit" style="background: var(--danger); color: var(--paper); padding: 7px 16px; font-size: 13px;">Permanently delete</button>
+            <span class="muted" id="delete-note" style="font-size: 13px;"></span>
+          </div>
+        </form>`;
+      e.target.textContent = "Cancel";
+
+      document.getElementById("delete-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        if (!confirm("This permanently deletes your account and all your SkillBridge data. Are you sure?")) return;
+
+        const note = document.getElementById("delete-note");
+        const btn = ev.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        note.textContent = "Deleting…";
+        try {
+          await deleteAccount(document.getElementById("delete-password").value);
+          location.href = "index.html";
+        } catch (err) {
+          note.textContent = err.code === "auth/invalid-credential" || err.code === "auth/wrong-password"
+            ? "That password isn't right."
+            : "Couldn't delete your account — try again.";
+          btn.disabled = false;
+          console.error(err);
+        }
+      });
+    });
+
+    // ---- Profile photo (uploaded to Cloudinary, URL saved to Firebase) ----
+    document.getElementById("avatar-input").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const note = document.getElementById("avatar-note");
+
+      if (!file.type.startsWith("image/")) {
+        note.textContent = "Please choose an image file.";
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        note.textContent = "Image must be under 5MB.";
+        return;
+      }
+
+      note.textContent = "Uploading…";
+      try {
+        const url = await uploadToCloudinary(file);
+        await updateProfilePhoto(user.uid, url);
+        document.getElementById("avatar-display").innerHTML = `<img src="${url}" alt="" />`;
+        document.getElementById("remove-photo-btn").style.display = "inline-block";
+        note.textContent = "Photo updated ✓";
+      } catch (err) {
+        note.textContent = err.message || "Couldn't upload — try again.";
+        console.error(err);
+      } finally {
+        setTimeout(() => { note.textContent = ""; }, 3000);
+      }
+    });
+
+    document.getElementById("remove-photo-btn").addEventListener("click", async () => {
+      const note = document.getElementById("avatar-note");
+      const removeBtn = document.getElementById("remove-photo-btn");
+      removeBtn.disabled = true;
+      note.textContent = "Removing…";
+      try {
+        await updateProfilePhoto(user.uid, null); // null clears photoURL in both Firebase Auth and the database
+        document.getElementById("avatar-display").textContent = initial;
+        removeBtn.style.display = "none";
+        document.getElementById("avatar-input").value = ""; // so picking the same file again still fires "change"
+        note.textContent = "Photo removed";
+      } catch (err) {
+        note.textContent = "Couldn't remove photo — try again.";
+        console.error(err);
+      } finally {
+        removeBtn.disabled = false;
+        setTimeout(() => { note.textContent = ""; }, 3000);
+      }
+    });
+
+    async function uploadToCloudinary(file) {
+      if (CLOUDINARY_CLOUD_NAME.includes("REPLACE_WITH") || CLOUDINARY_UPLOAD_PRESET.includes("REPLACE_WITH")) {
+        throw new Error("Photo upload isn't set up yet — add your Cloudinary details to cloudinary-config.js.");
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed — try again.");
+      const data = await res.json();
+      return data.secure_url;
+    }
+  </script>
+
+</body>
+</html>

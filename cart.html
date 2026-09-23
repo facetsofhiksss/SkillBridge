@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cart — SkillBridge</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content" id="content">
+        <h1 class="page-title">Your cart</h1>
+        <p class="page-subtitle" id="loading-note">Loading your cart…</p>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      initShell, requireAuth, formatPrice, escapeHTML,
+      getCartCourseIds, removeFromCart, enrollInCourse, recordPurchase,
+      loadCourses, getCourseCached, backLinkHTML, wireBackLink,
+    } from "./app.js";
+    import { PAYSTACK_PUBLIC_KEY } from "./paystack-config.js";
+
+    initShell();
+    const content = document.getElementById("content");
+
+    const user = await requireAuth();
+    await loadCourses();
+    await renderCart();
+
+    async function renderCart() {
+      const ids = await getCartCourseIds(user.uid);
+      const items = ids.map(getCourseCached).filter(Boolean);
+
+      if (items.length === 0) {
+        content.innerHTML = `
+          ${backLinkHTML()}
+          <h1 class="page-title">Your cart</h1>
+          <div class="center-empty">
+            <p>Your cart is empty.</p>
+            <p style="margin-top: 12px;"><a class="btn btn--gold" href="catalog.html" style="padding: 8px 16px;">Browse courses</a></p>
+          </div>`;
+        wireBackLink();
+        return;
+      }
+
+      const total = items.reduce((sum, c) => sum + c.price, 0);
+
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <h1 class="page-title">Your cart</h1>
+        <p class="page-subtitle">${items.length} ${items.length === 1 ? "course" : "courses"} ready to check out.</p>
+
+        <div class="detail-layout">
+          <div class="cart-list" id="cart-list">
+            ${items.map((c) => `
+              <div class="cart-item" data-id="${c.id}">
+                <div class="cart-item__body">
+                  <span class="cart-item__title">${escapeHTML(c.title)}</span>
+                  <span class="cart-item__instructor">${escapeHTML(c.instructor)}</span>
+                </div>
+                <span class="cart-item__price">${formatPrice(c.price)}</span>
+                <button class="cart-item__remove" data-id="${c.id}">Remove</button>
+              </div>`).join("")}
+          </div>
+
+          <div class="detail-card">
+            <div class="cart-summary__row"><span>Subtotal</span><span>${formatPrice(total)}</span></div>
+            <div class="cart-summary__total"><span>Total</span><span>${formatPrice(total)}</span></div>
+            <button class="btn btn--gold btn--block" id="checkout-btn">Pay with Paystack</button>
+            <p class="muted" style="font-size: 12px; margin-top: 12px;">
+              Payments are handled by Paystack. In test mode, use one of
+              <a href="https://paystack.com/docs/payments/test-payments/" target="_blank" rel="noopener">Paystack's test cards</a>
+              — no real money moves.
+            </p>
+          </div>
+        </div>`;
+      wireBackLink();
+
+      document.getElementById("cart-list").addEventListener("click", async (e) => {
+        const btn = e.target.closest(".cart-item__remove");
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = "Removing…";
+        await removeFromCart(user.uid, btn.dataset.id);
+        await renderCart();
+      });
+
+      const checkoutBtn = document.getElementById("checkout-btn");
+      checkoutBtn.addEventListener("click", () => startCheckout(checkoutBtn, items, total));
+    }
+
+    function startCheckout(checkoutBtn, items, total) {
+      if (typeof PaystackPop === "undefined") {
+        alert("Payment couldn't load. Check your connection and try again.");
+        return;
+      }
+      if (PAYSTACK_PUBLIC_KEY.includes("REPLACE_WITH")) {
+        alert("Paystack isn't set up yet — add your public key to paystack-config.js.");
+        return;
+      }
+
+      checkoutBtn.disabled = true;
+      checkoutBtn.textContent = "Opening payment…";
+
+      // A reference unique to this attempt, so Paystack (and our own purchase record) can
+      // tell each checkout apart even if the same person pays for the same cart twice.
+      const reference = `sb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      const handler = PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY,
+        email: user.email,
+        amount: total * 100, // Paystack expects kobo, not naira.
+        currency: "NGN",
+        ref: reference,
+        metadata: {
+          custom_fields: [
+            { display_name: "Courses", variable_name: "courses", value: items.map((c) => c.title).join(", ") },
+          ],
+        },
+        callback: (response) => finishPurchase(checkoutBtn, items, total, response.reference),
+        onClose: () => {
+          // They closed the popup without paying — let them try again.
+          checkoutBtn.disabled = false;
+          checkoutBtn.textContent = "Pay with Paystack";
+        },
+      });
+
+      handler.openIframe();
+    }
+
+    // NOTE: this trusts Paystack's client-side success callback. It does not call Paystack's
+    // servers to confirm the payment, so it isn't tamper-proof — someone with dev tools open
+    // could in theory trigger this callback without paying. Closing that gap needs a small
+    // server (e.g. a Firebase Cloud Function) that verifies the reference with your SECRET
+    // key before enrolling anyone. Fine for a prototype; revisit before handling real money
+    // at scale.
+    async function finishPurchase(checkoutBtn, items, total, reference) {
+      checkoutBtn.textContent = "Finalizing…";
+      try {
+        await recordPurchase(user.uid, { reference, courseIds: items.map((c) => c.id), amount: total });
+        await Promise.all(items.map((c) => enrollInCourse(user.uid, c.id)));
+        renderSuccess(items);
+      } catch (err) {
+        alert(`Payment went through, but we couldn't finish enrolling you. Save this reference and contact support: ${reference}`);
+        console.error(err);
+      }
+    }
+
+    function renderSuccess(items) {
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <h1 class="page-title">You're enrolled 🎉</h1>
+        <p class="page-subtitle">You now have access to ${items.length} more ${items.length === 1 ? "course" : "courses"}.</p>
+        <div class="lesson-list" style="margin-bottom: 24px;">
+          ${items.map((c) => `
+            <div class="lesson-row">
+              <span class="lesson-row__check">✓</span>
+              <span class="lesson-row__title">${escapeHTML(c.title)}</span>
+              <a class="btn btn--outline" href="course-detail.html?id=${c.id}" style="padding: 6px 14px;">View course</a>
+            </div>`).join("")}
+        </div>
+        <a class="btn btn--gold" href="catalog.html" style="padding: 11px 22px;">Browse more courses</a>`;
+      wireBackLink();
+    }
+  </script>
+
+</body>
+</html>

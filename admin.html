@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — SkillBridge</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content" id="content">
+        <h1 class="page-title">Admin</h1>
+        <p class="page-subtitle">Loading…</p>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CATEGORIES, SEED_COURSES } from "./courses.js";
+    import {
+      initShell, requireAuth, escapeHTML, formatPrice, isAdmin, STATUS_LABEL, normalizeStatus,
+      watchCourses, saveCourse, deleteCourse, nextCourseId,
+      watchAllTeacherApplications, setApplicationStatus,
+      watchAllPurchases, backLinkHTML, wireBackLink,
+    } from "./app.js";
+
+    initShell();
+    const content = document.getElementById("content");
+    const user = await requireAuth();
+
+    if (!isAdmin(user)) {
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <h1 class="page-title">Admin</h1>
+        <div class="center-empty"><p>You don't have access to this page.</p></div>`;
+      wireBackLink();
+    } else {
+      setUpAdmin();
+    }
+
+    function setUpAdmin() {
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <h1 class="page-title">Admin</h1>
+        <p class="page-subtitle">Manage the course catalog, review teach applications, and see sales.</p>
+
+        <div class="admin-tabs">
+          <button class="admin-tab is-active" id="tab-courses" type="button">Courses</button>
+          <button class="admin-tab" id="tab-applications" type="button">Teach applications</button>
+          <button class="admin-tab" id="tab-sales" type="button">Sales</button>
+        </div>
+
+        <div id="panel-courses"></div>
+        <div id="panel-applications" style="display: none;"></div>
+        <div id="panel-sales" style="display: none;"></div>`;
+
+      wireBackLink();
+
+      const TABS = ["courses", "applications", "sales"];
+      TABS.forEach((tab) => {
+        document.getElementById(`tab-${tab}`).addEventListener("click", () => showTab(tab));
+      });
+
+      function showTab(which) {
+        TABS.forEach((tab) => {
+          document.getElementById(`tab-${tab}`).classList.toggle("is-active", tab === which);
+          document.getElementById(`panel-${tab}`).style.display = tab === which ? "block" : "none";
+        });
+      }
+
+      setUpCourses();
+      setUpSales();
+      setUpApplications();
+    }
+
+    // ============================== Courses ==============================
+
+    let currentCourses = [];
+
+    function setUpCourses() {
+      const panel = document.getElementById("panel-courses");
+      panel.innerHTML = `
+        <div class="row" style="margin-bottom: 16px; max-width: 700px;">
+          <span class="muted" id="course-count" style="font-size: 13px;">Loading…</span>
+          <button class="btn btn--gold" id="add-course-btn" type="button" style="padding: 7px 16px; font-size: 13px;">+ Add course</button>
+        </div>
+        <div id="courses-list" style="max-width: 700px; margin-bottom: 24px;"></div>
+        <div id="course-form-area" style="max-width: 640px;"></div>`;
+
+      document.getElementById("add-course-btn").addEventListener("click", () => showCourseForm(null));
+
+      // Delegated once, on the container — renderCoursesList() only replaces its children.
+      document.getElementById("courses-list").addEventListener("click", (e) => {
+        const editBtn = e.target.closest("[data-edit]");
+        if (editBtn) {
+          showCourseForm(currentCourses.find((c) => c.id === editBtn.dataset.edit) || null);
+          return;
+        }
+        const delBtn = e.target.closest("[data-delete]");
+        if (delBtn) {
+          const c = currentCourses.find((c) => c.id === delBtn.dataset.delete);
+          if (confirm(`Delete "${c?.title}"? This can't be undone. Existing enrollments and reviews for it are left as-is, but the course itself disappears from the catalog.`)) {
+            deleteCourse(delBtn.dataset.delete).catch((err) => {
+              alert("Couldn't delete — try again.");
+              console.error(err);
+            });
+          }
+        }
+      });
+
+      watchCourses((courses) => {
+        currentCourses = courses;
+        renderCoursesList(courses);
+        renderSales(); // course titles on the Sales tab depend on this list too
+      });
+    }
+
+    function renderCoursesList(courses) {
+      document.getElementById("course-count").textContent = `${courses.length} course${courses.length === 1 ? "" : "s"}`;
+      const listEl = document.getElementById("courses-list");
+
+      if (courses.length === 0) {
+        listEl.innerHTML = `
+          <div class="center-empty">
+            <p>No courses in the database yet.</p>
+            <p style="margin-top: 12px;"><button class="btn btn--gold" id="import-seed-btn" type="button" style="padding: 8px 16px;">Import the original 16 courses</button></p>
+          </div>`;
+        document.getElementById("import-seed-btn").addEventListener("click", async (e) => {
+          const btn = e.target;
+          btn.disabled = true;
+          btn.textContent = "Importing…";
+          try {
+            for (const course of SEED_COURSES) await saveCourse(course.id, course);
+          } catch (err) {
+            alert("Something went wrong importing — check the console.");
+            console.error(err);
+            btn.disabled = false;
+            btn.textContent = "Import the original 16 courses";
+          }
+        });
+        return;
+      }
+
+      listEl.innerHTML = courses
+        .slice()
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .map((c) => `
+          <div class="admin-course-row">
+            <div class="admin-course-row__info">
+              <span class="admin-course-row__title">${escapeHTML(c.title)}</span>
+              <span class="admin-course-row__meta">${escapeHTML(c.category)} · ${formatPrice(c.price)} · ${c.lessons.length} lesson${c.lessons.length === 1 ? "" : "s"}</span>
+            </div>
+            <button class="btn btn--outline" data-edit="${c.id}" type="button" style="padding: 5px 14px; font-size: 12px;">Edit</button>
+            <button class="btn btn--outline" data-delete="${c.id}" type="button" style="padding: 5px 14px; font-size: 12px; border-color: var(--danger); color: var(--danger);">Delete</button>
+          </div>`).join("");
+    }
+
+    function lessonRowHTML(lesson) {
+      return `
+        <div class="admin-lesson-row">
+          <div class="row" style="margin-bottom: 8px;">
+            <span class="muted" style="font-size: 12px;">Lesson</span>
+            <button type="button" data-remove-lesson style="background: none; border: none; color: var(--danger); font-size: 12px; text-decoration: underline;">Remove</button>
+          </div>
+          <input class="input lesson-title-input" type="text" placeholder="Lesson title" value="${escapeHTML(lesson.title || "")}" style="margin-bottom: 8px;" />
+          <div class="row" style="gap: 8px; margin-bottom: 8px; align-items: stretch;">
+            <input class="input lesson-minutes-input" type="number" min="1" placeholder="Minutes" value="${lesson.minutes || 15}" style="max-width: 110px;" />
+            <input class="input lesson-video-input" type="text" placeholder="Video embed URL (optional)" value="${escapeHTML(lesson.videoUrl || "")}" style="flex: 1;" />
+          </div>
+          <textarea class="input lesson-content-input" rows="2" placeholder="What this lesson covers">${escapeHTML(lesson.content || "")}</textarea>
+        </div>`;
+    }
+
+    function addLessonRow() {
+      document.getElementById("lessons-editor").insertAdjacentHTML("beforeend", lessonRowHTML({}));
+    }
+
+    // course is null when adding a brand-new one, or the existing course object when editing.
+    function showCourseForm(course) {
+      const area = document.getElementById("course-form-area");
+      const isNew = !course;
+      const lessons = course?.lessons || [];
+
+      area.innerHTML = `
+        <form id="course-form" class="stack">
+          <div class="section-label">${isNew ? "Add a course" : `Edit "${escapeHTML(course.title)}"`}</div>
+
+          <div>
+            <label class="auth-card__field-label" for="c-title">Title</label>
+            <input class="input" id="c-title" type="text" value="${escapeHTML(course?.title || "")}" required />
+          </div>
+
+          <div>
+            <label class="auth-card__field-label" for="c-instructor">Instructor</label>
+            <input class="input" id="c-instructor" type="text" value="${escapeHTML(course?.instructor || "")}" required />
+          </div>
+
+          <div class="row" style="gap: 12px; align-items: flex-end;">
+            <div style="flex: 1;">
+              <label class="auth-card__field-label" for="c-category">Category</label>
+              <select class="select" id="c-category" style="width: 100%;" required>
+                ${CATEGORIES.map((cat) => `<option value="${escapeHTML(cat)}" ${course?.category === cat ? "selected" : ""}>${escapeHTML(cat)}</option>`).join("")}
+              </select>
+            </div>
+            <div style="flex: 1;">
+              <label class="auth-card__field-label" for="c-level">Level</label>
+              <select class="select" id="c-level" style="width: 100%;" required>
+                ${["Beginner", "Intermediate", "Advanced"].map((l) => `<option ${course?.level === l ? "selected" : ""}>${l}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+
+          <div class="row" style="gap: 12px;">
+            <div style="flex: 1;">
+              <label class="auth-card__field-label" for="c-price">Price (₦, 0 = free)</label>
+              <input class="input" id="c-price" type="number" min="0" step="100" value="${course?.price ?? 0}" required />
+            </div>
+            <div style="flex: 1;">
+              <label class="auth-card__field-label" for="c-rating">Rating (1–5)</label>
+              <input class="input" id="c-rating" type="number" min="1" max="5" step="0.1" value="${course?.rating ?? 4.5}" required />
+            </div>
+            <div style="flex: 1;">
+              <label class="auth-card__field-label" for="c-students">Students</label>
+              <input class="input" id="c-students" type="number" min="0" value="${course?.students ?? 0}" required />
+            </div>
+          </div>
+
+          <div>
+            <label class="auth-card__field-label" for="c-description">Description</label>
+            <textarea class="input" id="c-description" rows="3" required>${escapeHTML(course?.description || "")}</textarea>
+          </div>
+
+          <div class="section-label" style="margin-top: 8px; margin-bottom: 0;">Lessons</div>
+          <div id="lessons-editor">${lessons.map(lessonRowHTML).join("")}</div>
+          <button class="btn btn--outline" id="add-lesson-btn" type="button" style="padding: 6px 14px; font-size: 13px; align-self: flex-start;">+ Add lesson</button>
+
+          <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+            <button class="btn btn--gold" type="submit" style="padding: 9px 20px;">${isNew ? "Create course" : "Save changes"}</button>
+            <button class="btn btn--outline" id="cancel-course-btn" type="button" style="padding: 9px 20px;">Cancel</button>
+            <span class="muted" id="course-form-note" style="font-size: 13px;"></span>
+          </div>
+        </form>`;
+
+      // Clicking Edit on a course near the top of a long list would otherwise open this
+      // form far below the fold with no visual sign anything happened.
+      area.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      if (lessons.length === 0) addLessonRow();
+
+      document.getElementById("add-lesson-btn").addEventListener("click", addLessonRow);
+      document.getElementById("lessons-editor").addEventListener("click", (e) => {
+        const removeBtn = e.target.closest("[data-remove-lesson]");
+        if (removeBtn) removeBtn.closest(".admin-lesson-row").remove();
+      });
+      document.getElementById("cancel-course-btn").addEventListener("click", () => { area.innerHTML = ""; });
+
+      document.getElementById("course-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const note = document.getElementById("course-form-note");
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+
+        const newLessons = [...document.querySelectorAll(".admin-lesson-row")].map((row) => {
+          const lesson = {
+            title: row.querySelector(".lesson-title-input").value.trim(),
+            minutes: Number(row.querySelector(".lesson-minutes-input").value) || 0,
+            content: row.querySelector(".lesson-content-input").value.trim(),
+          };
+          const videoUrl = row.querySelector(".lesson-video-input").value.trim();
+          if (videoUrl) lesson.videoUrl = videoUrl;
+          return lesson;
+        }).filter((l) => l.title);
+
+        if (newLessons.length === 0) {
+          note.textContent = "Add at least one lesson.";
+          return;
+        }
+
+        const data = {
+          id: course?.id || nextCourseId(currentCourses),
+          title: document.getElementById("c-title").value.trim(),
+          instructor: document.getElementById("c-instructor").value.trim(),
+          category: document.getElementById("c-category").value,
+          level: document.getElementById("c-level").value,
+          price: Number(document.getElementById("c-price").value) || 0,
+          rating: Number(document.getElementById("c-rating").value) || 4.5,
+          students: Number(document.getElementById("c-students").value) || 0,
+          createdAt: course?.createdAt || new Date().toISOString().slice(0, 10),
+          description: document.getElementById("c-description").value.trim(),
+          lessons: newLessons,
+        };
+
+        submitBtn.disabled = true;
+        note.textContent = "Saving…";
+        try {
+          await saveCourse(data.id, data);
+          area.innerHTML = "";
+        } catch (err) {
+          note.textContent = "Couldn't save — try again.";
+          submitBtn.disabled = false;
+          console.error(err);
+        }
+      });
+    }
+
+    // ========================= Teach applications =========================
+
+    function setUpApplications() {
+      const panel = document.getElementById("panel-applications");
+      panel.innerHTML = `
+        <p class="muted" id="app-count" style="font-size: 13px; margin-bottom: 16px;">Loading…</p>
+        <div id="applications-admin-list" class="stack" style="gap: 12px; max-width: 640px;"></div>`;
+
+      document.getElementById("applications-admin-list").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-approve], [data-reject]");
+        if (!btn) return;
+        const status = btn.hasAttribute("data-approve") ? "approved" : "rejected";
+        btn.closest(".admin-app-row").querySelectorAll("button").forEach((b) => { b.disabled = true; });
+        setApplicationStatus(btn.dataset.uid, btn.dataset.appid, status).catch((err) => {
+          alert("Couldn't update status — try again.");
+          console.error(err);
+        });
+      });
+
+      watchAllTeacherApplications((apps) => {
+        document.getElementById("app-count").textContent = `${apps.length} application${apps.length === 1 ? "" : "s"}`;
+        const listEl = document.getElementById("applications-admin-list");
+        listEl.innerHTML = apps.length === 0
+          ? `<p class="muted" style="font-size: 14px;">No teach applications yet.</p>`
+          : apps.map((a) => {
+              const status = normalizeStatus(a.status);
+              return `
+                <div class="admin-app-row">
+                  <div class="row" style="margin-bottom: 4px;">
+                    <span style="font-weight: 500;">${escapeHTML(a.courseTitle)}</span>
+                    <span class="status-badge status-badge--${status}">${STATUS_LABEL[status]}</span>
+                  </div>
+                  <p class="muted" style="font-size: 12px; margin-bottom: 8px;">
+                    ${escapeHTML(a.applicantEmail || "Unknown applicant")} · ${escapeHTML(a.category)} ·
+                    ${new Date(a.submittedAt).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" })}
+                  </p>
+                  <p style="font-size: 14px; margin-bottom: 10px;">${escapeHTML(a.pitch)}</p>
+                  <div style="display: flex; gap: 10px;">
+                    <button class="btn btn--outline" data-approve data-uid="${a.uid}" data-appid="${a.appId}" type="button" style="padding: 5px 14px; font-size: 12px; border-color: var(--emerald); color: var(--emerald);">Approve</button>
+                    <button class="btn btn--outline" data-reject data-uid="${a.uid}" data-appid="${a.appId}" type="button" style="padding: 5px 14px; font-size: 12px; border-color: var(--danger); color: var(--danger);">Reject</button>
+                  </div>
+                </div>`;
+            }).join("");
+      });
+    }
+
+    // ================================ Sales ================================
+
+    let currentPurchases = [];
+
+    function setUpSales() {
+      const panel = document.getElementById("panel-sales");
+      panel.innerHTML = `
+        <div class="row" style="margin-bottom: 16px; max-width: 700px;">
+          <span class="muted" id="sales-count" style="font-size: 13px;">Loading…</span>
+          <span style="font-weight: 600;" id="sales-total"></span>
+        </div>
+        <div id="sales-list" style="max-width: 700px;"></div>`;
+
+      watchAllPurchases((purchases) => {
+        currentPurchases = purchases;
+        renderSales();
+      });
+    }
+
+    // Called from both the purchases watcher and the courses watcher, since a purchase's
+    // course titles depend on currentCourses too, and whichever list loads second still
+    // needs to trigger a correct final render.
+    function renderSales() {
+      const countEl = document.getElementById("sales-count");
+      if (!countEl) return; // Sales tab hasn't been built yet
+
+      const total = currentPurchases.reduce((sum, p) => sum + (p.amount || 0), 0);
+      countEl.textContent = `${currentPurchases.length} purchase${currentPurchases.length === 1 ? "" : "s"}`;
+      document.getElementById("sales-total").textContent = currentPurchases.length ? formatPrice(total) : "";
+
+      document.getElementById("sales-list").innerHTML = currentPurchases.length === 0
+        ? `<p class="muted" style="font-size: 14px;">No purchases yet.</p>`
+        : currentPurchases.map((p) => {
+            const titles = (p.courseIds || [])
+              .map((id) => currentCourses.find((c) => c.id === id)?.title)
+              .filter(Boolean)
+              .join(", ") || "Course no longer listed";
+            const date = new Date(p.paidAt).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" });
+            return `
+              <div class="admin-course-row">
+                <div class="admin-course-row__info">
+                  <span class="admin-course-row__title">${escapeHTML(titles)}</span>
+                  <span class="admin-course-row__meta">${escapeHTML(p.buyerEmail || "Unknown buyer")} · ${date} · Ref: ${escapeHTML(p.reference)}</span>
+                </div>
+                <span style="font-weight: 600;">${formatPrice(p.amount)}</span>
+              </div>`;
+          }).join("");
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — SkillBridge</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content" id="content">
+        <h1 class="page-title">Your dashboard</h1>
+        <p class="page-subtitle">Loading your courses…</p>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { courseDuration } from "./courses.js";
+    import {
+      initShell, requireAuth, escapeHTML, getEnrollments, completionPercent,
+      loadCourses, getCourseCached, backLinkHTML, wireBackLink,
+    } from "./app.js";
+
+    initShell();
+    const content = document.getElementById("content");
+    const user = await requireAuth();
+    await loadCourses();
+
+    function formatDuration(totalMinutes) {
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (hours === 0) return `${minutes}m`;
+      return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+    }
+
+    const raw = await getEnrollments(user.uid);
+    const enrollments = Object.entries(raw)
+      .map(([id, data]) => ({ course: getCourseCached(id), ...data }))
+      .filter((e) => e.course)
+      .sort((a, b) => b.enrolledAt - a.enrolledAt);
+
+    const name = user.displayName || user.email.split("@")[0];
+
+    if (enrollments.length === 0) {
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <h1 class="page-title">Welcome, ${escapeHTML(name)}.</h1>
+        <div class="center-empty">
+          <p>You haven't enrolled in anything yet.</p>
+          <p style="margin-top: 12px;"><a class="btn btn--gold" href="catalog.html" style="padding: 8px 16px;">Browse courses</a></p>
+        </div>`;
+      wireBackLink();
+    } else {
+      const completedCount = enrollments.filter(
+        (e) => completionPercent(e.course, e.completedLessons) === 100
+      ).length;
+      const totalMinutes = enrollments.reduce((sum, e) => sum + courseDuration(e.course), 0);
+
+      content.innerHTML = `
+        ${backLinkHTML()}
+        <h1 class="page-title">Welcome back, ${escapeHTML(name)}.</h1>
+        <p class="page-subtitle">Here's where you left off.</p>
+
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-card__number">${enrollments.length}</div>
+            <div class="stat-card__label">${enrollments.length === 1 ? "course" : "courses"} enrolled</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__number">${completedCount}</div>
+            <div class="stat-card__label">completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__number">${formatDuration(totalMinutes)}</div>
+            <div class="stat-card__label">of content enrolled</div>
+          </div>
+        </div>
+
+        <div class="section-label">Your courses</div>
+        <div class="stack" style="gap: 14px;">
+          ${enrollments.map(enrollmentCardHTML).join("")}
+        </div>`;
+      wireBackLink();
+    }
+
+    function enrollmentCardHTML(e) {
+      const pct = completionPercent(e.course, e.completedLessons);
+      const done = e.completedLessons ? Object.values(e.completedLessons).filter(Boolean).length : 0;
+      return `
+        <a href="course-detail.html?id=${e.course.id}" class="enrollment-card">
+          <div class="row" style="margin-bottom: 4px;">
+            <span style="font-weight: 500;">${escapeHTML(e.course.title)}</span>
+            <span class="muted" style="font-size: 13px;">${pct}%${pct === 100 ? " ✓" : ""}</span>
+          </div>
+          <p class="muted" style="font-size: 13px; margin-bottom: 12px;">${escapeHTML(e.course.instructor)} · ${done} of ${e.course.lessons.length} lessons</p>
+          <div class="progress-track">
+            <div class="progress-fill" style="width: ${pct}%"></div>
+          </div>
+        </a>`;
+    }
+  </script>
+
+</body>
+</html>

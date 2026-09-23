@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teach on SkillBridge</title>
+  <link rel="stylesheet" href="style.css?v=20260923b" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="sidebar__logo">
+        <a class="logo" href="index.html">
+          <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
+        </a>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
+      </nav>
+      <div class="sidebar__footer">Browsing as guest</div>
+    </aside>
+
+    <div class="main">
+
+      <header class="topbar">
+        <input class="input topbar__search" type="search" placeholder="Search courses or instructors" />
+        <div class="topbar__actions" id="topbar-actions"></div>
+      </header>
+
+      <main class="content" id="content">
+        <h1 class="page-title">Teach on SkillBridge</h1>
+        <p class="page-subtitle">Loading…</p>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CATEGORIES } from "./courses.js";
+    import {
+      initShell, requireAuth, escapeHTML, STATUS_LABEL, normalizeStatus,
+      watchTeacherApplications, addTeacherApplication, updateTeacherApplication,
+      backLinkHTML, wireBackLink,
+    } from "./app.js";
+
+    initShell();
+    const content = document.getElementById("content");
+    const user = await requireAuth();
+
+    content.innerHTML = `
+      ${backLinkHTML()}
+      <h1 class="page-title">Teach on SkillBridge</h1>
+      <p class="page-subtitle" style="max-width: 560px;">
+        Propose a course you'd like to teach. There's no course editor yet — once we like an
+        idea, we'll reach out by email at <strong>${escapeHTML(user.email)}</strong> to build it
+        together. You can propose more than one course.
+      </p>
+
+      <div class="row" style="max-width: 480px; margin-bottom: 16px;">
+        <span class="section-label" style="margin-bottom: 0;">Your proposals</span>
+        <button class="btn btn--outline" id="new-app-btn" type="button" style="padding: 6px 14px; font-size: 13px;">+ Propose a course</button>
+      </div>
+
+      <div id="applications-list" class="stack" style="gap: 12px; max-width: 480px; margin-bottom: 24px;"></div>
+      <div id="form-area" style="max-width: 480px;"></div>`;
+    wireBackLink();
+
+    // Kept in sync by the live listener below, so the "Edit" buttons always have the
+    // latest data to prefill the form with, without needing a separate fetch per click.
+    let currentApps = [];
+
+    function renderList(apps) {
+      const listEl = document.getElementById("applications-list");
+
+      if (apps.length === 0) {
+        listEl.innerHTML = `<p class="muted" style="font-size: 14px;">You haven't proposed a course yet.</p>`;
+        return;
+      }
+
+      listEl.innerHTML = apps.map(([id, a]) => {
+        const status = normalizeStatus(a.status);
+        return `
+        <div class="detail-card" style="position: static;">
+          <div class="row" style="margin-bottom: 4px;">
+            <span style="font-weight: 500;">${escapeHTML(a.courseTitle)}</span>
+            <span class="status-badge status-badge--${status}">${STATUS_LABEL[status]}</span>
+          </div>
+          <p class="muted" style="font-size: 13px; margin-bottom: 10px;">
+            ${escapeHTML(a.category)} · Submitted ${new Date(a.submittedAt).toLocaleDateString("en-NG", { year: "numeric", month: "short", day: "numeric" })}
+          </p>
+          ${status === "approved"
+            ? `<p class="muted" style="font-size: 12px;">We'll reach out by email — no need to edit this one.</p>`
+            : `<button class="btn btn--outline" data-edit="${id}" type="button" style="padding: 5px 14px; font-size: 12px;">Edit</button>`}
+        </div>`;
+      }).join("");
+    }
+
+    // appId is null for a brand-new proposal, or an existing one's id to edit it in place.
+    function showForm(appId, existing) {
+      const area = document.getElementById("form-area");
+      area.innerHTML = `
+        <form id="teach-form" class="stack">
+          <div class="section-label" style="margin-bottom: 0;">${appId ? "Edit your proposal" : "Propose a new course"}</div>
+
+          <div>
+            <label class="auth-card__field-label" for="course-title">What would you like to teach?</label>
+            <input class="input" id="course-title" type="text" placeholder="e.g. Beginner Photography for Instagram" value="${escapeHTML(existing?.courseTitle || "")}" required />
+          </div>
+
+          <div>
+            <label class="auth-card__field-label" for="course-category">Closest category</label>
+            <select class="select" id="course-category" style="width: 100%;" required>
+              <option value="" disabled ${!existing ? "selected" : ""}>Choose one</option>
+              ${CATEGORIES.map((c) => `<option value="${escapeHTML(c)}" ${existing?.category === c ? "selected" : ""}>${escapeHTML(c)}</option>`).join("")}
+            </select>
+          </div>
+
+          <div>
+            <label class="auth-card__field-label" for="pitch">Tell us about your experience and why you'd be a good fit</label>
+            <textarea class="input" id="pitch" rows="5" placeholder="What's your background with this topic? Have you taught or made content about it before?" required>${escapeHTML(existing?.pitch || "")}</textarea>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="btn btn--gold" type="submit" style="padding: 9px 20px;">${appId ? "Save changes" : "Submit proposal"}</button>
+            <button class="btn btn--outline" id="cancel-form-btn" type="button" style="padding: 9px 20px;">Cancel</button>
+            <span class="muted" id="teach-save-note" style="font-size: 13px;"></span>
+          </div>
+        </form>`;
+
+      document.getElementById("cancel-form-btn").addEventListener("click", () => {
+        area.innerHTML = "";
+      });
+
+      document.getElementById("teach-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const note = document.getElementById("teach-save-note");
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const values = {
+          courseTitle: document.getElementById("course-title").value.trim(),
+          category: document.getElementById("course-category").value,
+          pitch: document.getElementById("pitch").value.trim(),
+        };
+        submitBtn.disabled = true;
+        note.textContent = "Saving…";
+        try {
+          if (appId) await updateTeacherApplication(user.uid, appId, values);
+          else await addTeacherApplication(user.uid, values);
+          area.innerHTML = ""; // the live listener below refreshes the list automatically
+        } catch (err) {
+          note.textContent = "Couldn't save — try again.";
+          submitBtn.disabled = false;
+          console.error(err);
+        }
+      });
+    }
+
+    document.getElementById("new-app-btn").addEventListener("click", () => showForm(null, null));
+
+    document.getElementById("applications-list").addEventListener("click", (e) => {
+      const editBtn = e.target.closest("[data-edit]");
+      if (!editBtn) return;
+      const id = editBtn.dataset.edit;
+      const existing = currentApps.find(([appId]) => appId === id)?.[1];
+      showForm(id, existing);
+    });
+
+    watchTeacherApplications(user.uid, (apps) => {
+      currentApps = apps;
+      renderList(apps);
+    });
+  </script>
+
+</body>
+</html>

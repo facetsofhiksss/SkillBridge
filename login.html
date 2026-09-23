@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SkillBridge — Log in or sign up</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260923b" />
 </head>
 <body>
 
@@ -17,7 +18,7 @@
         <path d="M10 82 Q50 40 90 82" fill="none" stroke="#FAF8F4" stroke-width="6"/>
       </svg>
 
-      <a class="logo" href="catalog.html" aria-label="Back to SkillBridge">
+      <a class="logo" href="index.html" aria-label="Back to SkillBridge">
         <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
         </svg>
@@ -46,14 +47,29 @@
 
           <div>
             <label class="auth-card__field-label" for="login-email">Email</label>
-            <input class="input" type="email" id="login-email" placeholder="you@example.com" required />
+            <input class="input" type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required />
           </div>
           <div>
             <label class="auth-card__field-label" for="login-password">Password</label>
-            <input class="input" type="password" id="login-password" placeholder="••••••••" required />
+            <input class="input" type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required />
           </div>
 
           <button class="btn btn--primary btn--block" type="submit">Log in</button>
+          <button type="button" id="forgot-link" style="background: none; border: none; align-self: flex-start; font-size: 13px; color: var(--muted); text-decoration: underline; padding: 0;">Forgot password?</button>
+        </form>
+
+        <!-- Reset-password form (hidden by default) -->
+        <form id="reset-form" class="stack" style="display: none;">
+          <h1 class="auth-card__heading">Reset your password</h1>
+          <p class="auth-card__subheading">Enter your email and we'll send you a link to reset it.</p>
+
+          <div>
+            <label class="auth-card__field-label" for="reset-email">Email</label>
+            <input class="input" type="email" id="reset-email" placeholder="you@example.com" autocomplete="email" required />
+          </div>
+
+          <button class="btn btn--primary btn--block" type="submit">Send reset link</button>
+          <button type="button" id="back-to-login" style="background: none; border: none; align-self: flex-start; font-size: 13px; color: var(--muted); text-decoration: underline; padding: 0;">Back to log in</button>
         </form>
 
         <!-- Sign up form (shown by default) -->
@@ -63,15 +79,15 @@
 
           <div>
             <label class="auth-card__field-label" for="signup-name">Full name</label>
-            <input class="input" type="text" id="signup-name" placeholder="Your name" required />
+            <input class="input" type="text" id="signup-name" placeholder="Your name" autocomplete="name" required />
           </div>
           <div>
             <label class="auth-card__field-label" for="signup-email">Email</label>
-            <input class="input" type="email" id="signup-email" placeholder="you@example.com" required />
+            <input class="input" type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required />
           </div>
           <div>
             <label class="auth-card__field-label" for="signup-password">Password</label>
-            <input class="input" type="password" id="signup-password" placeholder="At least 6 characters" required />
+            <input class="input" type="password" id="signup-password" placeholder="At least 6 characters" autocomplete="new-password" minlength="6" required />
           </div>
 
           <button class="btn btn--gold btn--block" type="submit">Create account</button>
@@ -83,60 +99,156 @@
   </div>
 
   <script type="module">
-    import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "./js/firebase-config.js";
+    import {
+      auth, db, ref, set,
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      sendPasswordResetEmail,
+      updateProfile,
+    } from "./config.js";
+    import { currentUser } from "./app.js";
 
-    const tabLogin = document.getElementById('tab-login');
-    const tabSignup = document.getElementById('tab-signup');
-    const loginForm = document.getElementById('login-form');
-    const signupForm = document.getElementById('signup-form');
+    // Where to go after auth. Pages that need login send people here with ?next=cart.html
+    const params = new URLSearchParams(location.search);
+    const next = params.get("next") || "catalog.html";
 
-    tabLogin.addEventListener('click', () => {
-      tabLogin.classList.add('is-active');
-      tabSignup.classList.remove('is-active');
-      loginForm.style.display = 'flex';
-      signupForm.style.display = 'none';
+    // Already signed in? No need to see this page.
+    currentUser().then((user) => { if (user) location.replace(next); });
+
+    const tabLogin = document.getElementById("tab-login");
+    const tabSignup = document.getElementById("tab-signup");
+    const tabs = document.querySelector(".auth-tabs");
+    const loginForm = document.getElementById("login-form");
+    const signupForm = document.getElementById("signup-form");
+    const resetForm = document.getElementById("reset-form");
+
+    // Three views share this one card: "login", "signup", "reset". Tabs only make sense
+    // for the first two, so they're hidden while resetting a password.
+    function showView(view) {
+      tabLogin.classList.toggle("is-active", view === "login");
+      tabSignup.classList.toggle("is-active", view === "signup");
+      tabs.style.display = view === "reset" ? "none" : "flex";
+      loginForm.style.display = view === "login" ? "flex" : "none";
+      signupForm.style.display = view === "signup" ? "flex" : "none";
+      resetForm.style.display = view === "reset" ? "flex" : "none";
+    }
+    tabLogin.addEventListener("click", () => showView("login"));
+    tabSignup.addEventListener("click", () => showView("signup"));
+    if (location.hash === "#login") showView("login");
+
+    document.getElementById("forgot-link").addEventListener("click", () => {
+      const email = document.getElementById("login-email").value.trim();
+      if (email) document.getElementById("reset-email").value = email;
+      showView("reset");
     });
-
-    tabSignup.addEventListener('click', () => {
-      tabSignup.classList.add('is-active');
-      tabLogin.classList.remove('is-active');
-      signupForm.style.display = 'flex';
-      loginForm.style.display = 'none';
-    });
+    document.getElementById("back-to-login").addEventListener("click", () => showView("login"));
 
     function showError(form, message) {
-      let errorEl = form.querySelector('.form-error');
+      let errorEl = form.querySelector(".form-error");
       if (!errorEl) {
-        errorEl = document.createElement('p');
-        errorEl.className = 'form-error';
+        errorEl = document.createElement("p");
+        errorEl.className = "form-error";
         form.prepend(errorEl);
       }
       errorEl.textContent = message;
     }
 
-    loginForm.addEventListener('submit', async (e) => {
+    function setBusy(form, busy) {
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = busy;
+      button.textContent = busy ? "Please wait…" : button.dataset.label;
+    }
+    loginForm.querySelector('button[type="submit"]').dataset.label = "Log in";
+    signupForm.querySelector('button[type="submit"]').dataset.label = "Create account";
+    resetForm.querySelector('button[type="submit"]').dataset.label = "Send reset link";
+
+    const FRIENDLY = {
+      "auth/email-already-in-use": "That email already has an account. Try logging in instead.",
+      "auth/operation-not-allowed": "Email sign-in is not switched on in Firebase yet. Enable Email/Password under Authentication → Sign-in method.",
+      "auth/invalid-email": "That email address doesn't look right.",
+      "auth/weak-password": "Password must be at least 6 characters.",
+      "auth/invalid-credential": "Wrong email or password.",
+      "auth/user-not-found": "Wrong email or password.",
+      "auth/wrong-password": "Wrong email or password.",
+      "auth/too-many-requests": "Too many attempts. Wait a moment and try again.",
+      "auth/network-request-failed": "Network problem. Check your connection and try again.",
+    };
+    const friendly = (err, fallback) => FRIENDLY[err.code] || fallback;
+
+    loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      const password = document.getElementById('login-password').value;
+      const email = document.getElementById("login-email").value.trim();
+      const password = document.getElementById("login-password").value;
+      setBusy(loginForm, true);
       try {
         await signInWithEmailAndPassword(auth, email, password);
-        window.location.href = 'catalog.html';
+        location.replace(next);
       } catch (err) {
-        showError(loginForm, 'Could not log in — check your email and password.');
+        showError(loginForm, friendly(err, "Could not log in — check your email and password."));
+        setBusy(loginForm, false);
       }
     });
 
-    signupForm.addEventListener('submit', async (e) => {
+    signupForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const email = document.getElementById('signup-email').value;
-      const password = document.getElementById('signup-password').value;
+      const name = document.getElementById("signup-name").value.trim();
+      const email = document.getElementById("signup-email").value.trim();
+      const password = document.getElementById("signup-password").value;
+      setBusy(signupForm, true);
       try {
-        await createUserWithEmailAndPassword(auth, email, password);
-        window.location.href = 'catalog.html';
+        const { user } = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(user, { displayName: name });
+
+        // Save the profile record, but never let a slow or misconfigured database
+        // block sign-up. If this fails, the profile page creates the record later.
+        const write = set(ref(db, `users/${user.uid}/profile`), {
+          name,
+          email,
+          bio: "",
+          createdAt: new Date().toISOString(),
+        });
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Database write timed out")), 4000)
+        );
+        await Promise.race([write, timeout]).catch((dbErr) =>
+          console.warn("Profile not saved to database:", dbErr.message)
+        );
+
+        location.replace(next);
       } catch (err) {
-        showError(signupForm, 'Could not create account — try a different email or a stronger password.');
+        showError(signupForm, friendly(err, "Could not create account — try a different email or a stronger password."));
+        setBusy(signupForm, false);
       }
     });
+
+    resetForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("reset-email").value.trim();
+      setBusy(resetForm, true);
+      try {
+        await sendPasswordResetEmail(auth, email);
+        showResetSent();
+      } catch (err) {
+        if (err.code === "auth/invalid-email") {
+          // A real problem worth telling them about — this one's a typo, not an account lookup.
+          showError(resetForm, friendly(err, "That email address doesn't look right."));
+          setBusy(resetForm, false);
+        } else {
+          // Don't reveal whether an account exists for this email — show the same
+          // "check your inbox" message whether it does or not.
+          console.warn("Password reset:", err.code);
+          showResetSent();
+        }
+      }
+    });
+
+    function showResetSent() {
+      resetForm.innerHTML = `
+        <h1 class="auth-card__heading">Check your email</h1>
+        <p class="auth-card__subheading">If an account exists for that email, we've sent a link to reset the password.</p>
+        <button type="button" id="reset-done" class="btn btn--outline btn--block">Back to log in</button>`;
+      document.getElementById("reset-done").addEventListener("click", () => showView("login"));
+    }
   </script>
 
 </body>

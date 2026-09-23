@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SkillBridge — Practical skills for right now</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260923b" />
 </head>
 <body>
 
@@ -12,42 +13,35 @@
 
     <aside class="sidebar">
       <div class="sidebar__logo">
-        <div class="logo">
+        <a class="logo" href="index.html">
           <svg class="logo__mark" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M2 15 Q12 4 22 15" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round"/>
           </svg>
           <span class="logo__word-skill">Skill</span><span class="logo__word-bridge">Bridge</span>
-        </div>
+        </a>
       </div>
       <nav class="sidebar__nav">
-        <a class="sidebar__link is-active" href="catalog.html">
-          <span class="sidebar__icon">▤</span> Catalog
-        </a>
-        <a class="sidebar__link" href="dashboard.html">
-          <span class="sidebar__icon">◧</span> Dashboard
-        </a>
-        <a class="sidebar__link" href="cart.html">
-          <span class="sidebar__icon">⛁</span> Cart
-        </a>
-        <a class="sidebar__link" href="profile.html">
-          <span class="sidebar__icon">◐</span> Profile
-        </a>
+        <a class="sidebar__link" href="catalog.html"><span class="sidebar__icon">▤</span> Catalog</a>
+        <a class="sidebar__link" href="dashboard.html"><span class="sidebar__icon">◧</span> Dashboard</a>
+        <a class="sidebar__link" href="cart.html"><span class="sidebar__icon">⛁</span> Cart</a>
+        <a class="sidebar__link" href="profile.html"><span class="sidebar__icon">◐</span> Profile</a>
+        <a class="sidebar__link" href="teach.html"><span class="sidebar__icon">✎</span> Teach</a>
       </nav>
-      <!-- Dashboard/Cart will redirect guests to login.html once Firebase Auth is wired in. -->
       <div class="sidebar__footer">Browsing as guest</div>
     </aside>
 
     <div class="main">
 
       <header class="topbar">
-        <input class="input topbar__search" type="text" placeholder="Search courses or instructors" />
-        <div class="topbar__actions">
-          <a class="btn btn--outline" href="login.html" style="padding: 8px 16px;">Log in</a>
-          <a class="btn btn--gold" href="login.html" style="padding: 8px 16px;">Sign up</a>
-        </div>
+        <form id="search-form" style="flex: 1; display: flex;">
+          <input class="input topbar__search" id="search" type="search" placeholder="Search courses or instructors" />
+        </form>
+        <div class="topbar__actions" id="topbar-actions"></div>
       </header>
 
       <main class="content">
+
+        <button type="button" class="back-link" id="back-link-btn">← Back</button>
 
         <!-- Hero -->
         <div class="hero">
@@ -55,12 +49,12 @@
             <h1 class="hero__title">Skills that move you forward.</h1>
             <p class="hero__subtitle">Tech, design, and creative courses built for students figuring it out as they go. Start free, upgrade when you're ready.</p>
             <div class="hero__cta-row">
-              <a class="btn btn--gold" href="#courses">Start learning</a>
+              <a class="btn btn--gold" href="catalog.html">Start learning</a>
               <a class="btn btn--outline" href="login.html">Create free account</a>
             </div>
           </div>
           <div class="hero__stat">
-            <div class="hero__stat-number">6</div>
+            <div class="hero__stat-number" id="free-count">6</div>
             <div class="hero__stat-label">free courses to start with</div>
           </div>
         </div>
@@ -90,109 +84,39 @@
           </div>
         </div>
 
-        <!-- Browse -->
+        <!-- Featured -->
         <div id="courses">
-          <div class="chip-row">
-            <button class="chip is-active">All</button>
-            <button class="chip">Free</button>
-            <button class="chip">Premium</button>
-            <button class="chip">Tech & Coding</button>
-            <button class="chip">Content Creation</button>
-            <button class="chip">Design</button>
-            <button class="chip">Career & Money</button>
-            <button class="chip">Soft Skills</button>
-          </div>
-
           <div class="section-heading">
-            <span class="section-heading__title">All courses</span>
-            <select class="select">
-              <option>Sort: Rating</option>
-              <option>Sort: Price (low–high)</option>
-              <option>Sort: Newest</option>
-            </select>
+            <span class="section-heading__title">Popular right now</span>
+            <a class="btn btn--outline" href="catalog.html" style="padding: 8px 16px;">See all courses</a>
           </div>
-
-          <!-- This grid will be generated with map() + filter() once Firebase is wired in. -->
-          <div class="course-grid" id="course-grid">
-
-            <a class="course-card" href="course-detail.html?id=c001">
-              <span class="course-card__category">Tech & Coding</span>
-              <div class="course-card__body">
-                <span class="course-card__title">Intro to Web Development</span>
-                <span class="course-card__instructor">Amaka O.</span>
-                <div class="course-card__meta">
-                  <span class="course-card__rating">★ 4.6</span>
-                  <span class="course-card__price is-free">Free</span>
-                </div>
-              </div>
-            </a>
-
-            <a class="course-card" href="course-detail.html?id=c005">
-              <span class="course-card__category">Content Creation</span>
-              <div class="course-card__body">
-                <span class="course-card__title">Video Editing with CapCut</span>
-                <span class="course-card__instructor">Hikmat K.</span>
-                <div class="course-card__meta">
-                  <span class="course-card__rating">★ 4.9</span>
-                  <span class="course-card__price">₦8,000</span>
-                </div>
-              </div>
-            </a>
-
-            <a class="course-card" href="course-detail.html?id=c011">
-              <span class="course-card__category">Career & Money</span>
-              <div class="course-card__body">
-                <span class="course-card__title">Scholarship Application Prep</span>
-                <span class="course-card__instructor">Tolu A.</span>
-                <div class="course-card__meta">
-                  <span class="course-card__rating">★ 4.8</span>
-                  <span class="course-card__price is-free">Free</span>
-                </div>
-              </div>
-            </a>
-
-            <a class="course-card" href="course-detail.html?id=c008">
-              <span class="course-card__category">Design</span>
-              <div class="course-card__body">
-                <span class="course-card__title">Canva for Creators</span>
-                <span class="course-card__instructor">Zainab I.</span>
-                <div class="course-card__meta">
-                  <span class="course-card__rating">★ 4.7</span>
-                  <span class="course-card__price">₦5,000</span>
-                </div>
-              </div>
-            </a>
-
-            <a class="course-card" href="course-detail.html?id=c004">
-              <span class="course-card__category">Tech & Coding</span>
-              <div class="course-card__body">
-                <span class="course-card__title">JavaScript Fundamentals</span>
-                <span class="course-card__instructor">Ngozi E.</span>
-                <div class="course-card__meta">
-                  <span class="course-card__rating">★ 4.7</span>
-                  <span class="course-card__price">₦9,000</span>
-                </div>
-              </div>
-            </a>
-
-            <a class="course-card" href="course-detail.html?id=c016">
-              <span class="course-card__category">Soft Skills</span>
-              <div class="course-card__body">
-                <span class="course-card__title">Acing Your IT Defense Presentation</span>
-                <span class="course-card__instructor">Chuka N.</span>
-                <div class="course-card__meta">
-                  <span class="course-card__rating">★ 4.9</span>
-                  <span class="course-card__price">₦5,500</span>
-                </div>
-              </div>
-            </a>
-
-          </div>
+          <div class="course-grid" id="course-grid"></div>
         </div>
 
       </main>
     </div>
   </div>
+
+  <script type="module">
+    import { initShell, courseCardHTML, loadCourses, wireBackLink } from "./app.js";
+
+    initShell();
+    wireBackLink();
+    const COURSES = await loadCourses();
+
+    document.getElementById("free-count").textContent = COURSES.filter((c) => c.price === 0).length;
+
+    // Show the six highest-rated courses as a taste of the catalog.
+    const featured = [...COURSES].sort((a, b) => b.rating - a.rating).slice(0, 6);
+    document.getElementById("course-grid").innerHTML = featured.map(courseCardHTML).join("");
+
+    // Searching from the home page hands off to the catalog.
+    document.getElementById("search-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const q = document.getElementById("search").value.trim();
+      location.href = q ? `catalog.html?q=${encodeURIComponent(q)}` : "catalog.html";
+    });
+  </script>
 
 </body>
 </html>
